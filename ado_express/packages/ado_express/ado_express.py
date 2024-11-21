@@ -70,8 +70,8 @@ class ADOExpress:
         found_releases = dict()
 
         for query in self.queries:
-            build_ids = work_item_manager.get_query_build_ids(query)
-            search_result_releases = self.release_finder.get_releases_via_builds(build_ids)
+            release_urls = work_item_manager.get_query_release_urls(query)
+            search_result_releases = self.release_finder.get_releases_via_release_urls(release_urls)
 
             for release_definition in search_result_releases:
                 if release_definition not in found_releases: found_releases[release_definition] = search_result_releases[release_definition]

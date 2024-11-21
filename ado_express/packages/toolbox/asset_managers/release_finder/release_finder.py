@@ -14,7 +14,6 @@ class ReleaseFinder:
 
     def __init__(self, ms_authentication: MSAuthentication, environment_variables: EnvironmentVariables):
         self.work_client = ms_authentication.work_client
-        self.build_client = ms_authentication.build_client
         self.release_client = ms_authentication.client
         self.release_client_v6 = ms_authentication.client_v6
         self.environment_variables = environment_variables
@@ -133,10 +132,10 @@ class ReleaseFinder:
                 
             return self.find_matching_releases_via_name(releases, release_number, deployment_detail)
 
-    def get_releases_dict_from_build_releases(self, release, release_name_split_key):
+    def get_releases_dict_from_releases(self, release, release_name_split_key):
         environment_name_to_find = self.environment_variables.VIA_ENV_SOURCE_NAME
         releases_dict = dict()
-        release_project = release.project_reference.name
+        release_project = release.project_reference.name if release.project_reference.name else release.project_reference.id
         release_definition = release.release_definition
         release_definition_name = release_definition.name
         dict_key = f'{release_project}/{release_definition_name}'
@@ -161,38 +160,29 @@ class ReleaseFinder:
         
         return releases_dict
     
-    def get_releases_from_build_id(self, build_id):
-        release = self.release_client.get_releases(artifact_version_id=build_id, top='250').value
-        project = None
-        description = None
+    def get_releases_from_release_id(self, release_url):
+        project_id = release_url.split(':')[1].split('/')[5]
+        release_id = int(release_url.split(':')[2])
+        release = None
 
-        for release_details in release: 
-            description = release_details.description
-            project = release_details.project_reference.name
+        try:
+            release = self.release_client.get_release(project=project_id, release_id=release_id)
+        except Exception as e:
+            logging.warning(f"Release {project_id}/{release_id} could not be found.")
 
-        if project and description: 
-            try:
-                build = self.build_client.get_build(project, build_id)
-                # Ensure build was the trigger of release
-                if build.definition.name in description:
-                    return release
-            except:
-                #Builds was deleted/no longer exists
-                logging.warning(f"The requested build with ID {build_id} couldn't be found. Older builds are particularly prone to this issue because they eventually get deleted based on your retention settings. This build and any related releases will be ignored.")
-        
-        return None
+        return [release] if release else None
     
-    def get_releases_via_builds(self, build_ids, release_name_split_key='Release-'):
+    def get_releases_via_release_urls(self, release_urls, release_name_split_key='Release-'):
         releases_dict = dict()
 
         with concurrent.futures.ThreadPoolExecutor() as executor:
             releases = []
-            build_releases = executor.map(self.get_releases_from_build_id, build_ids)
+            work_item_releases = executor.map(self.get_releases_from_release_id, release_urls)
             # TODO: Refactor this
-            for release in build_releases:
+            for release in work_item_releases:
                 if release is not None:
                     releases.append(release)
-            releases_dicts = executor.map(self.get_releases_dict_from_build_releases, [item for sublist in releases for item in sublist if build_releases is not None], repeat(release_name_split_key))
+            releases_dicts = executor.map(self.get_releases_dict_from_releases, [item for sublist in releases for item in sublist if work_item_releases is not None], repeat(release_name_split_key))
             
             for release_dictionary in releases_dicts:
 
