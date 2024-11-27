@@ -5,8 +5,8 @@ from itertools import repeat
 from ado_express.packages.authentication import MSAuthentication
 from ado_express.packages.shared import Constants, EnvironmentVariables
 from ado_express.packages.shared.enums import DeploymentStatusLabel, ExplicitReleaseTypes
-from ado_express.packages.shared.models import DeploymentDetails, DeploymentStatus
-from ado_express.packages.toolbox import (ExcelManager, Logger,
+from ado_express.packages.shared.models import DeploymentDetails, DeploymentStatus, ReleaseDetails
+from ado_express.packages.toolbox import (MarkdownManager, Logger,
                                           ReleaseEnvironmentFinder,
                                           ReleaseFinder,
                                           UpdateProgressRetriever,
@@ -18,7 +18,7 @@ class ADOExpress:
 
     def __init__(self, environment_variables: EnvironmentVariables):
         self.constants = Constants()
-        self.excel_manager = ExcelManager()
+        self.excel_manager = MarkdownManager()
 
         self.environment_variables = environment_variables
         self.load_dependencies()
@@ -84,21 +84,30 @@ class ADOExpress:
 
         # Get rollback
         with concurrent.futures.ThreadPoolExecutor() as executor:
-            rollbacks = executor.map(self.release_finder.get_release, {k for k, v in found_releases.items()}, repeat(self.via_env), repeat(True), repeat(self.via_latest))
+            rollbacks = executor.map(self.release_finder.get_release, {v for k, v in found_releases.items()}, repeat(self.via_env), repeat(True), repeat(self.via_latest))
 
             for rollback in rollbacks:
-                if all(rollback.values()): rollback_dict |= rollback # If found rollback, add it to rollback_dict
-                else: found_releases.pop(next(iter(rollback))) # Else remove release key & value from found_releases
+                if rollback:
+                    release_project = rollback.project_reference.id
+                    release_definition = rollback.release_definition
+                    release_definition_name = release_definition.name
+                    dict_key = f'{release_project}/{release_definition_name}'
+                    rollback_dict[dict_key] = ReleaseDetails(release_project, release_definition_name, rollback.name, None, False, None, rollback.url, rollback.id)
+                # else: found_releases.pop(next(iter(rollback))) # Else remove release key & value from found_releases
 
         for release_location, target_release in found_releases.items():
-            project = release_location.split('/')[0] 
-            release_name = release_location.split('/')[1]
-            rollback_release = rollback_dict[release_location]
-            target_release_number = target_release.split('-')[1]
-            rollback_release_number = rollback_release.split('-')[1]
+            project = target_release.release_project_name
+            release_name = target_release.release_name
+            release_definition_name = target_release.release_definition
+            target_release_number = target_release.release_number
+            target_release_url = f'{self.environment_variables.ORGANIZATION_URL}/{project}/_releaseProgress?releaseId={target_release.id}'
+            rollback_release = rollback_dict.get(release_location)
+
+            rollback_release_number = rollback_release.release_number if rollback_release else None
+            rollback_release_url = f'{self.environment_variables.ORGANIZATION_URL}/{project}/_releaseProgress?releaseId={rollback_release.id}'
 
             if run_helpers.needs_deployment(target_release_number, rollback_release_number):
-                deployment_detail = DeploymentDetails(project, release_name, target_release_number, rollback_release_number)
+                deployment_detail = DeploymentDetails(project, release_name, target_release_number, rollback_release_number, False, target_release_url, rollback_release_url, release_definition_name)
                 deployment_details.append(deployment_detail)
 
                 logging.info(f'Release found from query: Project:{project}, Release Definition:{release_name}, Target:{target_release_number}, Rollback:{rollback_release_number}')
@@ -113,7 +122,7 @@ class ADOExpress:
             rollback_release_number = rollback_release.name.split('-')[1]
 
             if run_helpers.needs_deployment(target_release_number, rollback_release_number):
-                deployment_detail = DeploymentDetails(deployment_detail.release_project_name, deployment_detail.release_name, target_release_number, rollback_release_number, deployment_detail.is_crucial)
+                deployment_detail = DeploymentDetails(deployment_detail.release_project_name, deployment_detail.release_name, target_release_number, rollback_release_number, deployment_detail.is_crucial, deployment_detail.release_url, deployment_detail.rollback_url, deployment_detail.release_definition_name)
                 
                 logging.info(f'Latest release found: Project:{deployment_detail.release_project_name}, Release Definition:{deployment_detail.release_name}, Target:{target_release_number}, Rollback:{rollback_release_number}')
                 return deployment_detail

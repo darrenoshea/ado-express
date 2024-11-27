@@ -8,13 +8,13 @@ sys.path.append(os.path.abspath("."))
 
 from ado_express.packages.ado_express import ADOExpress
 from ado_express.packages.shared import Constants, EnvironmentVariables
-from ado_express.packages.toolbox import (DeploymentPlan, ExcelManager,
+from ado_express.packages.toolbox import (DeploymentPlan, MarkdownManager,
                                           run_helpers)
 
 if __name__ == '__main__':
     constants = Constants()
     environment_variables = EnvironmentVariables()
-    excel_manager = ExcelManager()
+    excel_manager = MarkdownManager()
     ado_express = ADOExpress(environment_variables)
     deployment_details = None
     deployment_plan = DeploymentPlan(constants, environment_variables)

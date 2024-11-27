@@ -3,10 +3,10 @@ import logging
 import sys
 
 from ado_express.packages.shared import Constants
-from ado_express.packages.toolbox import ExcelManager
+from ado_express.packages.toolbox import MarkdownManager
 
 constants = Constants()
-excel_manager = ExcelManager()
+excel_manager = MarkdownManager()
         
 def user_confirmed_deployment():
     user_input = input("Are you sure you want to deploy the releases? (Y/N): ").strip().lower()
@@ -104,4 +104,4 @@ def deploy_regular_releases(ado_express, deployment_details, crucial_deployment_
             
         executor.map(ado_express.deploy_to_target_or_rollback, deployment_details)
 
-def needs_deployment(target_release_number, rollback_release_number): return int(target_release_number) > int(rollback_release_number)
+def needs_deployment(target_release_number, rollback_release_number): return int(target_release_number) > (int(rollback_release_number) if rollback_release_number else 0)

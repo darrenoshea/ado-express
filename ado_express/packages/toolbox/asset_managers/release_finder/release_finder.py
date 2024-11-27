@@ -84,10 +84,10 @@ class ReleaseFinder:
     def get_release(self, deployment_detail, find_via_env=False, rollback=False, via_latest=False):
         # If deployment details are coming from query dict they will be str
         project = deployment_detail.split('/')[0] if isinstance(deployment_detail, str) else deployment_detail.release_project_name 
-        release_name = deployment_detail.split('/')[1] if isinstance(deployment_detail, str) else deployment_detail.release_name
+        release_name = deployment_detail.split('/')[1] if isinstance(deployment_detail, str) else deployment_detail.release_definition
         # Gets release definitions names 
         release_definitions = self.release_client.get_release_definitions(project)
-        
+
         for definition in release_definitions.value:
             
             if str(definition.name).lower() == str(release_name).lower():
@@ -114,7 +114,7 @@ class ReleaseFinder:
         
         for definition in release_definitions.value:
             
-            if str(definition.name).lower() == str(deployment_detail.release_name).lower():
+            if str(definition.name).lower() == str(deployment_detail.release_definition_name).lower():
                 release_definition = definition
 
         # Get release id from release to know which needs to be deployed to new environment
@@ -139,24 +139,25 @@ class ReleaseFinder:
         release_definition = release.release_definition
         release_definition_name = release_definition.name
         dict_key = f'{release_project}/{release_definition_name}'
+        dict_value = ReleaseDetails(release_project, release_definition_name, release.name, None, False, None, release.url, release.id)
 
         if dict_key in releases_dict:
         
             if release.name.split(release_name_split_key)[-1] > releases_dict[dict_key].split(release_name_split_key)[-1]: 
 
-                if environment_name_to_find is None: releases_dict[dict_key] = release.name
+                if environment_name_to_find is None: releases_dict[dict_key] = dict_value
                 else:
                     release_to_add = self.release_client.get_release(project=release_project, release_id=release.id)
                     
                     for env in release_to_add.environments:
-                        if str(env.name).lower() == environment_name_to_find and env.status in ReleaseEnvironmentStatuses.Succeeded: releases_dict[dict_key] = release.name
+                        if str(env.name).lower() == environment_name_to_find and env.status in ReleaseEnvironmentStatuses.Succeeded: releases_dict[dict_key] = dict_value
         else: 
-            if environment_name_to_find is None: releases_dict[dict_key] = release.name
+            if environment_name_to_find is None: releases_dict[dict_key] = dict_value
             else:
                 release_to_add = self.release_client.get_release(project=release_project, release_id=release.id)
                 
                 for env in release_to_add.environments:
-                    if str(env.name).lower() == environment_name_to_find and env.status in ReleaseEnvironmentStatuses.Succeeded: releases_dict[dict_key] = release.name
+                    if str(env.name).lower() == environment_name_to_find and env.status in ReleaseEnvironmentStatuses.Succeeded: releases_dict[dict_key] = dict_value
         
         return releases_dict
     
@@ -186,14 +187,13 @@ class ReleaseFinder:
             
             for release_dictionary in releases_dicts:
 
-                for release_definition, release_name in release_dictionary.items():
-
+                for release_definition, release_detail in release_dictionary.items():
                     if release_definition in releases_dict:
-                        new_release_number = int(release_name.split(release_name_split_key)[-1])
-                        existing_release_number = int(releases_dict[release_definition].split(release_name_split_key)[-1])
+                        new_release_number = release_detail.release_number
+                        existing_release_number = releases_dict[release_definition].release_number
                         
-                        if new_release_number > existing_release_number: releases_dict[release_definition] = release_name
+                        if new_release_number > existing_release_number: releases_dict[release_definition] = release_detail
                     else: 
-                        releases_dict[release_definition] = release_name
+                        releases_dict[release_definition] = release_detail
         
         return releases_dict
